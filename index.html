@@ -452,10 +452,6 @@
       0%, 100% { transform: scale(var(--current-scale, 1)); }
       50% { transform: scale(calc(var(--current-scale, 1) * 1.02)); }
     }
-    #yesBtn:hover {
-      background: #ff1f68;
-      transform: scale(calc(var(--current-scale, 1) * 1.05));
-    }
 
     .pulse-ring {
       position: absolute;
@@ -503,10 +499,6 @@
       box-shadow: 0 10px 30px rgba(0,0,0,0.1);
       transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
       z-index: 20;
-    }
-    #noBtn:hover {
-      background: linear-gradient(135deg, #e2e8f0, #cbd5e1);
-      transform: translateY(-50%) scale(0.92);
     }
 
     @media (max-width: 400px) {
@@ -717,6 +709,16 @@
     let mouseX = window.innerWidth / 2, mouseY = window.innerHeight / 2;
     let cursorX = mouseX, cursorY = mouseY;
 
+    // Micro-saccades (tiny jitter + occasional quick hops)
+    const sacc = {
+      x: 0, y: 0,
+      tx: 0, ty: 0,
+      nextRetarget: 0,
+      impulseX: 0, impulseY: 0,
+      impulseUntil: 0,
+      nextImpulse: 0
+    };
+
     // Cheese gate
     let cheeseCollected = 0;
     const CHEESE_TOTAL = 5;
@@ -735,7 +737,6 @@
     document.addEventListener('mousemove', (e) => {
       setTarget(e.clientX, e.clientY);
 
-      // Valentine background + card tilt only in valentine mode
       if (isValentineMode) {
         body.style.setProperty('--mouse-x', (mouseX / window.innerWidth * 100) + '%');
         body.style.setProperty('--mouse-y', (mouseY / window.innerHeight * 100) + '%');
@@ -776,19 +777,57 @@
       setTimeout(() => dot.remove(), 800);
     }
 
+    function updateSaccades(now) {
+      // Retarget tiny drift every ~120–260ms
+      if (now >= sacc.nextRetarget) {
+        sacc.tx = rand(-2.0, 2.0);
+        sacc.ty = rand(-1.8, 1.8);
+        sacc.nextRetarget = now + rand(120, 260);
+      }
+
+      // Quick micro hop every ~900–2400ms
+      if (now >= sacc.nextImpulse) {
+        sacc.impulseX = rand(-3.8, 3.8);
+        sacc.impulseY = rand(-3.0, 3.0);
+        sacc.impulseUntil = now + rand(45, 85);
+        sacc.nextImpulse = now + rand(900, 2400);
+      }
+
+      // Ease drift
+      sacc.x += (sacc.tx - sacc.x) * 0.18;
+      sacc.y += (sacc.ty - sacc.y) * 0.18;
+
+      // Fade impulse quickly
+      if (now > sacc.impulseUntil) {
+        sacc.impulseX *= 0.80;
+        sacc.impulseY *= 0.80;
+        if (Math.abs(sacc.impulseX) < 0.05) sacc.impulseX = 0;
+        if (Math.abs(sacc.impulseY) < 0.05) sacc.impulseY = 0;
+      } else {
+        // While active, decay a bit each frame to avoid harshness
+        sacc.impulseX *= 0.88;
+        sacc.impulseY *= 0.88;
+      }
+    }
+
     function animateCursor() {
+      const now = performance.now();
+
       cursorX += (mouseX - cursorX) * 0.15;
       cursorY += (mouseY - cursorY) * 0.15;
 
       cursor.style.left = cursorX + 'px';
       cursor.style.top = cursorY + 'px';
 
-      // Eyes follow the cursor (mouse/heart) on both screens, desktop and mobile
-      updateEye('eyeLeft', 155, 125, 5, cursorX, cursorY);
-      updateEye('eyeRight', 225, 125, 5, cursorX, cursorY);
+      updateSaccades(now);
+
+      // Eyes follow cursor plus micro-saccades (always, both screens)
+      const lookX = cursorX + sacc.x + sacc.impulseX;
+      const lookY = cursorY + sacc.y + sacc.impulseY;
+      updateEye('eyeLeft', 155, 125, 5, lookX, lookY);
+      updateEye('eyeRight', 225, 125, 5, lookX, lookY);
 
       // Trail: spawn dots based on movement + time
-      const now = performance.now();
       const d = Math.hypot(cursorX - lastTrailX, cursorY - lastTrailY);
       if (d > 10 || (now - lastTrailTs) > 80) {
         spawnTrailDot(cursorX, cursorY);
@@ -875,10 +914,7 @@
       if (cheeseCollected >= CHEESE_TOTAL) {
         cheeseUnlocked = true;
         hudText.textContent = 'Unlocked. Transitioning...';
-
-        setTimeout(() => {
-          startTransition();
-        }, 450);
+        setTimeout(() => startTransition(), 450);
       }
     }
 
@@ -901,8 +937,11 @@
         `M ${centerX} ${centerY} L ${centerX - 180} ${centerY - 200} L ${centerX - 300} ${centerY - 250}`,
         `M ${centerX} ${centerY} L ${centerX + 100} ${centerY + 200} L ${centerX + 150} ${centerY + 350}`,
         `M ${centerX} ${centerY} L ${centerX - 220} ${centerY + 100} L ${centerX - 400} ${centerY + 150}`,
-        `M ${centerX} ${centerY} L ${centerX + 50} ${centerY - 300} L ${centerX + 80} ${centerY - 450}`,
+        `M ${centerX} ${centerY} L ${centerX + 50} ${centerY - 300} L ${centerX + 80} ${centerX - 450}`,
       ];
+
+      // Fix typo in last crack (y coordinate) by rebuilding that entry safely
+      cracks[4] = `M ${centerX} ${centerY} L ${centerX + 50} ${centerY - 300} L ${centerX + 80} ${centerY - 450}`;
 
       cracks.forEach((d, i) => {
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -949,7 +988,6 @@
         body.classList.add('valentine-mode');
         cursor.textContent = '💖';
 
-        // Hide cheese and HUD
         hud.style.display = 'none';
         cheeseLayer.style.display = 'none';
         clearCheese();
@@ -1096,6 +1134,11 @@
 
     // Init
     window.addEventListener('load', () => {
+      // Seed saccade timers so it feels alive immediately
+      const now = performance.now();
+      sacc.nextRetarget = now + rand(30, 120);
+      sacc.nextImpulse = now + rand(350, 1200);
+
       spawnCheesePieces();
     });
 
