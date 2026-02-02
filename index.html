@@ -35,7 +35,6 @@
       place-items: center;
       font-family: 'Inter', system-ui, sans-serif;
 
-      /* IMPORTANT: Keep the page itself non-scrollable, scroll happens inside .card */
       overflow: hidden;
 
       padding: 20px;
@@ -52,7 +51,6 @@
       background: radial-gradient(circle at var(--mouse-x, 50%) var(--mouse-y, 50%), #fff5f8, var(--val-bg2), var(--val-bg1));
     }
 
-    /* Cursor */
     .cursor-heart {
       width: 34px;
       height: 34px;
@@ -83,7 +81,6 @@
       .cursor-heart { width: 30px; height: 30px; font-size: 30px; }
     }
 
-    /* Cursor trail */
     .trail-dot {
       position: fixed;
       width: 10px;
@@ -113,7 +110,6 @@
       z-index: 9999;
     }
 
-    /* Pawprints layer */
     #paw-layer { position: fixed; inset: 0; pointer-events: none; z-index: 9992; }
     .pawprint {
       position: fixed;
@@ -131,7 +127,6 @@
       100% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(calc(var(--scale, 1) * 0.92)); }
     }
 
-    /* Ice overlay */
     .ice-overlay {
       position: fixed;
       inset: 0;
@@ -181,7 +176,6 @@
       100% { opacity: 0; transform: translate(var(--tx), 100vh) rotate(var(--rot)) scale(0.5); }
     }
 
-    /* Card */
     .card {
       width: min(680px, 92vw);
       padding: clamp(32px, 6vw, 48px);
@@ -198,7 +192,6 @@
       box-shadow: 0 25px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05);
       backdrop-filter: blur(10px);
 
-      /* FIX: scrolling inside the card for small screens and the last screen */
       max-height: calc(100svh - 40px);
       overflow-y: auto;
       overflow-x: hidden;
@@ -242,7 +235,6 @@
       transform: translateY(-20px) rotate(20deg);
     }
 
-    /* HUD */
     .hud {
       position: fixed;
       left: 18px;
@@ -273,7 +265,6 @@
       border: 1px solid rgba(255,255,255,0.08);
     }
 
-    /* Cheese pieces */
     #cheese-layer { position: fixed; inset: 0; z-index: 9994; pointer-events: none; }
     .cheese {
       position: absolute;
@@ -296,7 +287,6 @@
       100% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(1.6); }
     }
 
-    /* Art + text */
     .art-container {
       position: relative;
       width: min(220px, 55vw);
@@ -306,6 +296,7 @@
       align-items: center;
       justify-content: center;
       transition: all 0.8s ease;
+      user-select: none;
     }
     body.valentine-mode .art-container { transform: scale(1.15); }
 
@@ -418,7 +409,6 @@
     }
     body.valentine-mode .subtitle::before { content: none; }
 
-    /* Buttons */
     .button-zone {
       position: relative;
       width: 100%;
@@ -599,7 +589,6 @@
       to { transform: scale(1) translateY(0); opacity: 1; }
     }
 
-    /* Valentine particles */
     .particle {
       position: fixed;
       pointer-events: none;
@@ -635,7 +624,7 @@
     <div class="ice-texture"></div>
     <div class="hockey-decoration">🏒</div>
 
-    <div class="art-container">
+    <div class="art-container" id="catClickArea">
       <svg class="art" viewBox="0 0 320 240" xmlns="http://www.w3.org/2000/svg" id="catSvg">
         <defs>
           <linearGradient id="fur" x1="0" x2="1">
@@ -737,6 +726,62 @@
     const hudText = document.getElementById('hudText');
 
     const pawLayer = document.getElementById('paw-layer');
+
+    // One confetti instance for the whole page
+    const confettiCanvas = document.getElementById('confettiCanvas');
+    const myConfetti = confetti.create(confettiCanvas, { resize: true });
+
+    // Emoji confetti setup for cat clicks (clear, visible emojis)
+    const catClickArea = document.getElementById('catClickArea');
+    let catClickCount = 0;
+
+    const CAT_EMOJIS = ['✨','🐭','🦁','💕','💖'];
+    const EMOJI_SCALAR = 1.6; // visibility
+    const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+
+    const CAT_SHAPES = CAT_EMOJIS.map(e =>
+      confetti.shapeFromText({ text: e, scalar: EMOJI_SCALAR, fontFamily: EMOJI_FONT })
+    );
+
+    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+    function burstCatConfetti(clientX, clientY) {
+      catClickCount++;
+
+      const particleCount = Math.min(40 + catClickCount * 18, 280);
+      const spread = Math.min(70 + catClickCount * 3, 140);
+      const startVelocity = Math.min(35 + catClickCount * 1.2, 55);
+
+      const ox = clamp(clientX / window.innerWidth, 0.05, 0.95);
+      const oy = clamp(clientY / window.innerHeight, 0.05, 0.95);
+
+      myConfetti({
+        particleCount,
+        spread,
+        startVelocity,
+        ticks: 220,
+        gravity: 0.85,
+        origin: { x: ox, y: oy },
+        shapes: CAT_SHAPES,
+        scalar: EMOJI_SCALAR
+      });
+
+      if (navigator.vibrate) navigator.vibrate(25);
+    }
+
+    if (catClickArea) {
+      catClickArea.style.cursor = 'pointer';
+
+      catClickArea.addEventListener('click', (e) => {
+        burstCatConfetti(e.clientX, e.clientY);
+      });
+
+      catClickArea.addEventListener('touchstart', (e) => {
+        if (!e.touches || !e.touches[0]) return;
+        const t = e.touches[0];
+        burstCatConfetti(t.clientX, t.clientY);
+      }, { passive: true });
+    }
 
     // Cursor target and cursor position (cursor eases towards target)
     let mouseX = window.innerWidth / 2, mouseY = window.innerHeight / 2;
@@ -851,11 +896,8 @@
       p.style.left = x + 'px';
       p.style.top = y + 'px';
 
-      // Rotation follows movement direction + slight randomness
       const deg = (angleRad * 180 / Math.PI) + rand(-10, 10);
       p.style.setProperty('--rot', deg.toFixed(1) + 'deg');
-
-      // Tiny variation
       p.style.setProperty('--scale', rand(0.92, 1.08).toFixed(2));
 
       pawLayer.appendChild(p);
@@ -874,12 +916,10 @@
       cursor.style.left = cursorX + 'px';
       cursor.style.top = cursorY + 'px';
 
-      // Movement angle for pawprints
       const vx = cursorX - prevX;
       const vy = cursorY - prevY;
       if (Math.hypot(vx, vy) > 0.5) lastMoveAngle = Math.atan2(vy, vx);
 
-      // First screen pawprints: every ~35px of cursor travel
       if (!isValentineMode) {
         const dp = Math.hypot(cursorX - lastPawX, cursorY - lastPawY);
         if (dp >= 35) {
@@ -936,7 +976,6 @@
       setTimeout(() => p.remove(), 3000);
     }
 
-    // Cheese spawn + collection
     function clearCheese() {
       if (!cheeseLayer) return;
       cheeseLayer.innerHTML = '';
@@ -986,7 +1025,6 @@
       }
     }
 
-    // Ice crack generation
     function createIceCrack() {
       const overlay = document.getElementById('iceOverlay');
       const svg = document.getElementById('crackSvg');
@@ -1053,7 +1091,6 @@
         body.classList.add('valentine-mode');
         cursor.textContent = '💖';
 
-        // Hide cheese, HUD, pawprints
         hud.style.display = 'none';
         cheeseLayer.style.display = 'none';
         clearCheese();
@@ -1082,7 +1119,6 @@
       }, 900);
     }
 
-    // Yes reward mechanic
     function growYes() {
       yesGrowthLevel++;
       yesScale = Math.min(2.0, 1 + (yesGrowthLevel * 0.06));
@@ -1112,7 +1148,6 @@
       setTimeout(() => ring.remove(), 800);
     }
 
-    // No button evasion
     let isMoving = false;
 
     function moveNo(px, py) {
@@ -1180,29 +1215,24 @@
       growYes();
     });
 
-    // Yes click finale
     yesBtn.addEventListener('click', () => {
       zone.style.display = 'none';
       hint.style.display = 'none';
       result.style.display = 'block';
 
-      const ci = confetti.create(document.getElementById('confettiCanvas'), { resize: true });
-      ci({ particleCount: 150, spread: 100, origin: { y: 0.6 }, colors: ['#ff3b7a', '#ff7aa2', '#ffd6e7'] });
-      setTimeout(() => ci({ particleCount: 100, spread: 120, origin: { y: 0.8 }, colors: ['#ff3b7a', '#ff7aa2'] }), 300);
+      myConfetti({ particleCount: 160, spread: 110, origin: { y: 0.62 }, colors: ['#ff3b7a', '#ff7aa2', '#ffd6e7'] });
+      setTimeout(() => myConfetti({ particleCount: 120, spread: 130, origin: { y: 0.82 }, colors: ['#ff3b7a', '#ff7aa2'] }), 280);
 
       if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 200]);
 
-      // Scroll to show the result on small screens
       card.scrollTo({ top: card.scrollHeight, behavior: 'smooth' });
     });
 
-    // Cursor hover feedback
     [yesBtn, noBtn].forEach(btn => {
       btn.addEventListener('mouseenter', () => cursor.classList.add('hovering'));
       btn.addEventListener('mouseleave', () => cursor.classList.remove('hovering'));
     });
 
-    // Init
     window.addEventListener('load', () => {
       const now = performance.now();
       sacc.nextRetarget = now + rand(30, 120);
