@@ -677,258 +677,129 @@
     </section>
   </main>
 
-  <script>
-    // State
+  <!-- ÄNDERE NUR DEN <script> TEIL, konkret: 1) updateEye erweitern, 2) animateCursor erweitert, 3) touchstart hinzufügen -->
+
+<script>
     let isValentineMode = false;
     let transitionDone = false;
-
-    // Cursor + movement
+    let yesGrowthLevel = 0;
+    let yesScale = 1;
+  
     const body = document.body;
     const cursor = document.getElementById('cursor');
     const card = document.getElementById('card');
-    const trailContainer = document.getElementById('trail-container');
-
-    const isTouchDevice = matchMedia('(pointer: coarse)').matches;
-
-    // Cursor position (rendered) and target position (input)
-    let targetX = window.innerWidth / 2;
-    let targetY = window.innerHeight / 2;
-    let cursorX = targetX;
-    let cursorY = targetY;
-
-    // Cheese
-    const CHEESE_TOTAL = 5;
-    let cheeseCollected = 0;
-    const cheeseLayer = document.getElementById('cheese-layer');
-    const cheeseCountEl = document.getElementById('cheeseCount');
-    const hudTextEl = document.getElementById('hudText');
-
-    // Valentine screen UI
+  
     const yesBtn = document.getElementById('yesBtn');
     const yesContainer = document.getElementById('yesContainer');
     const yesMicrotext = document.getElementById('yesMicrotext');
+  
     const zone = document.getElementById('zone');
     const noBtn = document.getElementById('noBtn');
     const result = document.getElementById('result');
     const hint = document.getElementById('hint');
-
-    let yesGrowthLevel = 0;
-    let yesScale = 1;
-
-    // Desktop: move target with mouse
+  
+    // Cursor tracking
+    let mouseX = window.innerWidth / 2, mouseY = window.innerHeight / 2;
+    let cursorX = mouseX, cursorY = mouseY;
+  
     document.addEventListener('mousemove', (e) => {
-      if (isTouchDevice) return;
-      targetX = e.clientX;
-      targetY = e.clientY;
-
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+  
+      // Valentine Hintergrund + Card Tilt nur im Valentine Screen
       if (isValentineMode) {
-        body.style.setProperty('--mouse-x', (targetX / window.innerWidth * 100) + '%');
-        body.style.setProperty('--mouse-y', (targetY / window.innerHeight * 100) + '%');
-
+        body.style.setProperty('--mouse-x', (mouseX / window.innerWidth * 100) + '%');
+        body.style.setProperty('--mouse-y', (mouseY / window.innerHeight * 100) + '%');
+  
         const rect = card.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
-        const rotateX = ((targetY - centerY) / (window.innerHeight / 2)) * -3;
-        const rotateY = ((targetX - centerX) / (window.innerWidth / 2)) * 3;
+  
+        const rotateX = ((mouseY - centerY) / (window.innerHeight / 2)) * -3;
+        const rotateY = ((mouseX - centerX) / (window.innerWidth / 2)) * 3;
         card.style.setProperty('--rotateX', rotateX + 'deg');
         card.style.setProperty('--rotateY', rotateY + 'deg');
-
-        updateEye('eyeLeft', 155, 125, 5);
-        updateEye('eyeRight', 225, 125, 5);
+  
+        if (Math.random() > 0.92) spawnParticle(mouseX, mouseY);
       }
     });
-
-    // Mobile: tap sets target, cursor "walks" there
+  
+    // NEU: touchstart, damit "Tippen" am Handy sofort das Ziel setzt
     document.addEventListener('touchstart', (e) => {
       if (!e.touches[0]) return;
       const t = e.touches[0];
-      targetX = t.clientX;
-      targetY = t.clientY;
-
-      if (navigator.vibrate) navigator.vibrate(10);
-
-      if (isValentineMode) {
-        body.style.setProperty('--mouse-x', (targetX / window.innerWidth * 100) + '%');
-        body.style.setProperty('--mouse-y', (targetY / window.innerHeight * 100) + '%');
-      }
+      mouseX = t.clientX;
+      mouseY = t.clientY;
     }, { passive: true });
-
-    // Smooth cursor animation + trail + cheese collision
-    let lastTrailAt = 0;
-
-    function animate() {
-      const dx = targetX - cursorX;
-      const dy = targetY - cursorY;
-
-      // Slightly slower on mobile to feel like "walking"
-      const lerp = isTouchDevice ? 0.08 : 0.16;
-      cursorX += dx * lerp;
-      cursorY += dy * lerp;
-
+  
+    document.addEventListener('touchmove', (e) => {
+      if (!e.touches[0]) return;
+      const t = e.touches[0];
+      mouseX = t.clientX;
+      mouseY = t.clientY;
+  
+      if (isValentineMode && Math.random() > 0.85) spawnParticle(t.clientX, t.clientY);
+    }, { passive: true });
+  
+    function animateCursor() {
+      cursorX += (mouseX - cursorX) * 0.15;
+      cursorY += (mouseY - cursorY) * 0.15;
+  
       cursor.style.left = cursorX + 'px';
       cursor.style.top = cursorY + 'px';
-
-      // Trail (rate limited)
-      const now = performance.now();
-      if (now - lastTrailAt > 45 && (Math.abs(dx) + Math.abs(dy)) > 1.5) {
-        lastTrailAt = now;
-        spawnTrailDot(cursorX, cursorY);
-      }
-
-      if (!isValentineMode) {
-        checkCheesePickup(cursorX, cursorY);
-      }
-
-      requestAnimationFrame(animate);
+  
+      // WICHTIG: Augen folgen IMMER dem Cursor (Maus/Herz), unabhängig vom Screen
+      updateEye('eyeLeft', 155, 125, 5, cursorX, cursorY);
+      updateEye('eyeRight', 225, 125, 5, cursorX, cursorY);
+  
+      requestAnimationFrame(animateCursor);
     }
-    requestAnimationFrame(animate);
-
-    function spawnTrailDot(x, y) {
-      const d = document.createElement('div');
-      d.className = 'trail-dot';
-      d.style.left = x + 'px';
-      d.style.top = y + 'px';
-      trailContainer.appendChild(d);
-      setTimeout(() => d.remove(), 650);
-    }
-
-    function updateEye(id, cx, cy, maxOff) {
+    animateCursor();
+  
+    // ÄNDERN: updateEye bekommt jetzt Zielkoordinaten (tx, ty) statt immer mouseX/mouseY zu nutzen
+    function updateEye(id, cx, cy, maxOff, tx, ty) {
       const eye = document.getElementById(id);
       const svg = document.getElementById('catSvg');
+      if (!eye || !svg) return;
+  
       const rect = svg.getBoundingClientRect();
+  
       const eyeX = rect.left + (cx / 320) * rect.width;
       const eyeY = rect.top + (cy / 240) * rect.height;
-      const angle = Math.atan2(targetY - eyeY, targetX - eyeX);
-      const dist = Math.min(maxOff, Math.hypot(targetX - eyeX, targetY - eyeY) / 15);
+  
+      const angle = Math.atan2(ty - eyeY, tx - eyeX);
+      const dist = Math.min(maxOff, Math.hypot(tx - eyeX, ty - eyeY) / 15);
+  
       eye.setAttribute('cx', cx + Math.cos(angle) * dist);
       eye.setAttribute('cy', cy + Math.sin(angle) * dist);
     }
-
-    // Cheese placement (avoid center card area)
-    function spawnCheesePieces() {
-      cheeseLayer.innerHTML = '';
-      cheeseCollected = 0;
-      updateCheeseHud();
-
-      const cardRect = card.getBoundingClientRect();
-      const avoid = {
-        left: cardRect.left - 40,
-        right: cardRect.right + 40,
-        top: cardRect.top - 40,
-        bottom: cardRect.bottom + 40
-      };
-
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-
-      for (let i = 0; i < CHEESE_TOTAL; i++) {
-        const el = document.createElement('div');
-        el.className = 'cheese';
-        el.textContent = '🧀';
-        el.dataset.picked = '0';
-
-        let x = 0, y = 0;
-        for (let tries = 0; tries < 60; tries++) {
-          x = 40 + Math.random() * (w - 80);
-          y = 60 + Math.random() * (h - 120);
-
-          const insideAvoid = (x > avoid.left && x < avoid.right && y > avoid.top && y < avoid.bottom);
-          if (!insideAvoid) break;
-        }
-
-        el.style.left = x + 'px';
-        el.style.top = y + 'px';
-        el.style.setProperty('--rot', (Math.random() * 60 - 30) + 'deg');
-
-        cheeseLayer.appendChild(el);
-      }
-
-      hudTextEl.textContent = isTouchDevice
-        ? 'Tap somewhere, the mouse walks there. Collect all cheese.'
-        : 'Move the mouse cursor to collect all cheese.';
+  
+    function spawnParticle(x, y) {
+      const p = document.createElement('div');
+      p.className = 'particle';
+      p.textContent = ['♥', '✦', '+', '•'][Math.floor(Math.random() * 4)];
+      p.style.left = x + 'px';
+      p.style.top = y + 'px';
+      p.style.setProperty('--tx', (Math.random() * 100 - 50) + 'px');
+      p.style.setProperty('--ty', (Math.random() * -100 - 50) + 'px');
+      document.getElementById('trail-container').appendChild(p);
+      setTimeout(() => p.remove(), 3000);
     }
-
-    function updateCheeseHud() {
-      cheeseCountEl.textContent = String(cheeseCollected);
-    }
-
-    function checkCheesePickup(x, y) {
-      const pieces = cheeseLayer.querySelectorAll('.cheese');
-      for (const p of pieces) {
-        if (p.dataset.picked === '1') continue;
-
-        const r = p.getBoundingClientRect();
-        const px = r.left + r.width / 2;
-        const py = r.top + r.height / 2;
-
-        if (Math.hypot(x - px, y - py) < 32) {
-          p.dataset.picked = '1';
-          p.classList.add('pop');
-
-          cheeseCollected++;
-          updateCheeseHud();
-
-          if (navigator.vibrate) navigator.vibrate(25);
-
-          setTimeout(() => p.remove(), 260);
-
-          if (cheeseCollected >= CHEESE_TOTAL) {
-            unlockValentine();
-          }
-        }
-      }
-    }
-
-    // Unlock -> ice crack -> valentine mode
-    function unlockValentine() {
-      hudTextEl.textContent = 'Unlocked.';
-      createIceCrack();
-
-      setTimeout(() => {
-        isValentineMode = true;
-        body.classList.add('valentine-mode');
-        cursor.textContent = '💖';
-
-        // Hide cheese layer and HUD
-        cheeseLayer.innerHTML = '';
-
-        document.getElementById('hockeyText').style.display = 'none';
-        const mainText = document.getElementById('mainText');
-        mainText.style.display = 'block';
-        mainText.classList.add('valentine-mode');
-
-        document.getElementById('blushLeft').style.opacity = '0.6';
-        document.getElementById('blushRight').style.opacity = '0.6';
-        document.getElementById('topHeart').style.opacity = '1';
-
-        const sub = document.getElementById('subtitle');
-        sub.textContent = isTouchDevice ? 'Tap to move...' : 'Move your mouse...';
-
-        setTimeout(() => document.getElementById('iceOverlay').classList.remove('active'), 900);
-
-        setTimeout(() => {
-          zone.classList.add('active');
-          hint.classList.add('visible');
-          transitionDone = true;
-          if (navigator.vibrate) navigator.vibrate([50, 100, 50]);
-        }, 700);
-      }, 900);
-    }
-
-    // Ice crack (SVG + shards)
+  
+    // Ice crack generation (SVG + shards)
     function createIceCrack() {
       const overlay = document.getElementById('iceOverlay');
       const svg = document.getElementById('crackSvg');
-
+  
       svg.innerHTML = '';
       overlay.querySelectorAll('.shatter-piece').forEach(el => el.remove());
       overlay.classList.add('active');
-
+  
       const w = window.innerWidth;
       const h = window.innerHeight;
       const centerX = w / 2;
       const centerY = h / 2;
-
+  
       const cracks = [
         `M ${centerX} ${centerY} L ${centerX + 200} ${centerY - 150} L ${centerX + 350} ${centerY - 180}`,
         `M ${centerX} ${centerY} L ${centerX - 180} ${centerY - 200} L ${centerX - 300} ${centerY - 250}`,
@@ -936,48 +807,84 @@
         `M ${centerX} ${centerY} L ${centerX - 220} ${centerY + 100} L ${centerX - 400} ${centerY + 150}`,
         `M ${centerX} ${centerY} L ${centerX + 50} ${centerY - 300} L ${centerX + 80} ${centerY - 450}`,
       ];
-
+  
       cracks.forEach((d, i) => {
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         path.setAttribute('d', d);
         path.setAttribute('class', 'crack-path');
         path.style.animationDelay = (i * 0.2) + 's';
         svg.appendChild(path);
-
+  
         if (Math.random() > 0.3) {
           const branch = document.createElementNS('http://www.w3.org/2000/svg', 'path');
           const midX = centerX + (Math.random() * 200 - 100);
           const midY = centerY + (Math.random() * 200 - 100);
           branch.setAttribute('d', `M ${midX} ${midY} L ${midX + (Math.random() * 120 - 60)} ${midY + (Math.random() * 120 - 60)}`);
           branch.setAttribute('class', 'crack-path branch');
-          branch.style.animationDelay = (i * 0.2 + 0.55) + 's';
+          branch.style.animationDelay = (i * 0.2 + 0.5) + 's';
           svg.appendChild(branch);
         }
       });
-
+  
       for (let i = 0; i < 8; i++) {
         const piece = document.createElement('div');
         piece.className = 'shatter-piece';
         const size = 40 + Math.random() * 60;
-
+  
         piece.style.width = size + 'px';
         piece.style.height = size + 'px';
         piece.style.left = (centerX + Math.random() * 300 - 150) + 'px';
         piece.style.top = (centerY + Math.random() * 200 - 100) + 'px';
         piece.style.setProperty('--tx', (Math.random() * 140 - 70) + 'px');
         piece.style.setProperty('--rot', (Math.random() * 360) + 'deg');
-        piece.style.animationDelay = (0.55 + Math.random() * 0.35) + 's';
-
+        piece.style.animationDelay = (0.5 + Math.random() * 0.3) + 's';
+  
         overlay.appendChild(piece);
       }
     }
-
-    // Valentine mechanics (same as before)
+  
+    // Transition after 5 seconds
+    setTimeout(() => startTransition(), 5000);
+  
+    function startTransition() {
+      createIceCrack();
+  
+      setTimeout(() => {
+        isValentineMode = true;
+        body.classList.add('valentine-mode');
+        cursor.textContent = '💖';
+  
+        document.getElementById('hockeyText').style.display = 'none';
+        const mainText = document.getElementById('mainText');
+        mainText.style.display = 'block';
+        mainText.classList.add('valentine-mode');
+  
+        document.getElementById('blushLeft').style.opacity = '0.6';
+        document.getElementById('blushRight').style.opacity = '0.6';
+        document.getElementById('topHeart').style.opacity = '1';
+  
+        const sub = document.getElementById('subtitle');
+        sub.textContent = 'Move your mouse...';
+  
+        setTimeout(() => {
+          document.getElementById('iceOverlay').classList.remove('active');
+        }, 800);
+  
+        setTimeout(() => {
+          zone.classList.add('active');
+          hint.classList.add('visible');
+          transitionDone = true;
+          if (navigator.vibrate) navigator.vibrate([50, 100, 50]);
+        }, 600);
+      }, 800);
+    }
+  
+    // Yes reward mechanic
     function growYes() {
       yesGrowthLevel++;
       yesScale = Math.min(2.0, 1 + (yesGrowthLevel * 0.06));
       yesBtn.style.setProperty('--current-scale', yesScale.toFixed(3));
-
+  
       yesBtn.className = '';
       if (yesGrowthLevel >= 2) yesBtn.classList.add('glow-1');
       if (yesGrowthLevel >= 4) yesBtn.classList.add('glow-2');
@@ -987,11 +894,11 @@
         yesBtn.classList.add('glow-5');
         yesMicrotext.classList.add('visible');
       }
-
+  
       createPulseRing();
       if (navigator.vibrate) navigator.vibrate(40);
     }
-
+  
     function createPulseRing() {
       const ring = document.createElement('div');
       ring.className = 'pulse-ring';
@@ -1001,43 +908,44 @@
       yesContainer.appendChild(ring);
       setTimeout(() => ring.remove(), 800);
     }
-
+  
+    // No button evasion
     let isMoving = false;
-
+  
     function moveNo(px, py) {
       if (isMoving || !transitionDone) return;
       isMoving = true;
-
+  
       const zr = zone.getBoundingClientRect();
       const nr = noBtn.getBoundingClientRect();
       const ncx = nr.left + nr.width / 2;
       const ncy = nr.top + nr.height / 2;
-
+  
       const threshold = (window.innerWidth < 400 ? 100 : 140);
-
+  
       if (Math.hypot(px - ncx, py - ncy) < threshold) {
         let dx = ncx - px;
         let dy = ncy - py;
         const mag = Math.hypot(dx, dy) || 1;
-
+  
         let nl = (nr.left - zr.left) + (dx / mag) * 130;
         let nt = (nr.top - zr.top) + (dy / mag) * 130;
-
+  
         nl = Math.max(10, Math.min(nl, zr.width - nr.width - 10));
         nt = Math.max(10, Math.min(nt, zr.height - nr.height - 10));
-
+  
         noBtn.style.left = nl + 'px';
         noBtn.style.top = nt + 'px';
         noBtn.style.transform = `translateY(-50%) rotate(${Math.random() * 18 - 9}deg)`;
-
+  
         growYes();
       }
-
+  
       setTimeout(() => { isMoving = false; }, 30);
     }
-
+  
     let animFrame = null;
-
+  
     zone.addEventListener('mousemove', (e) => {
       if (animFrame) return;
       animFrame = requestAnimationFrame(() => {
@@ -1045,7 +953,7 @@
         animFrame = null;
       });
     });
-
+  
     zone.addEventListener('touchmove', (e) => {
       if (!e.touches[0] || animFrame) return;
       const t = e.touches[0];
@@ -1054,41 +962,40 @@
         animFrame = null;
       });
     }, { passive: true });
-
+  
     noBtn.addEventListener('click', (e) => {
       e.preventDefault();
       const zr = zone.getBoundingClientRect();
+  
       const left = 20 + Math.random() * (zr.width - noBtn.offsetWidth - 40);
       const top = 20 + Math.random() * (zr.height - noBtn.offsetHeight - 40);
+  
       noBtn.style.left = left + 'px';
       noBtn.style.top = top + 'px';
       noBtn.style.transform = `translateY(-50%) rotate(${Math.random() * 18 - 9}deg)`;
+  
       growYes();
     });
-
+  
+    // Yes click finale
     yesBtn.addEventListener('click', () => {
       zone.style.display = 'none';
       hint.style.display = 'none';
       result.style.display = 'block';
-
+  
       const ci = confetti.create(document.getElementById('confettiCanvas'), { resize: true });
       ci({ particleCount: 150, spread: 100, origin: { y: 0.6 }, colors: ['#ff3b7a', '#ff7aa2', '#ffd6e7'] });
       setTimeout(() => ci({ particleCount: 100, spread: 120, origin: { y: 0.8 }, colors: ['#ff3b7a', '#ff7aa2'] }), 300);
-
+  
       if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 200]);
     });
-
+  
+    // Cursor hover feedback
     [yesBtn, noBtn].forEach(btn => {
       btn.addEventListener('mouseenter', () => cursor.classList.add('hovering'));
       btn.addEventListener('mouseleave', () => cursor.classList.remove('hovering'));
     });
-
-    // Init
-    spawnCheesePieces();
-
-    window.addEventListener('resize', () => {
-      if (!isValentineMode) spawnCheesePieces();
-    });
   </script>
+  
 </body>
 </html>
