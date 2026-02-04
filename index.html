@@ -529,17 +529,24 @@
     #noBtn.fade-4 { opacity: 0.28; filter: blur(1.8px); }
     #noBtn.vanish { opacity: 0; filter: blur(2.6px); pointer-events: none; transform: translate(-50%, -50%) scale(0.6) rotate(-12deg); }
 
-    @media (max-width: 400px) {
-      .button-zone { height: 190px; }
+    /* Mobile: Yes bigger, centered, more focus */
+    @media (max-width: 520px) {
+      .button-zone { height: 220px; margin-top: 26px; }
       .yes-container {
         left: 50% !important;
-        top: 20% !important;
+        top: 25% !important;
         transform: translate(-50%, -50%);
       }
-      #yesBtn { padding: 20px 40px; }
+      #yesBtn {
+        padding: 24px 56px;
+        min-width: 190px;
+        min-height: 74px;
+        font-size: 22px;
+        box-shadow: 0 18px 55px rgba(255, 59, 122, 0.45), 0 0 60px rgba(255, 59, 122, 0.12);
+      }
       #noBtn {
         left: 50% !important;
-        top: 80% !important;
+        top: 78% !important;
         transform: translate(-50%, -50%);
       }
     }
@@ -728,10 +735,14 @@
     let isValentineMode = false;
     let transitionDone = false;
 
+    const isTouchDevice = (('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
+    const isSmallScreen = window.matchMedia('(max-width: 520px)').matches;
+    const isMobileLike = isTouchDevice || isSmallScreen;
+
     let yesGrowthLevel = 0;
-    const YES_BASE_SCALE = 1.15;
-    const YES_MAX_SCALE  = 2.6;
-    const YES_GROW_STEP  = 0.11;
+    const YES_BASE_SCALE = isMobileLike ? 1.32 : 1.15;  // bigger on mobile
+    const YES_MAX_SCALE  = isMobileLike ? 2.9  : 2.6;
+    const YES_GROW_STEP  = isMobileLike ? 0.14 : 0.11;
     let yesScale = YES_BASE_SCALE;
 
     // EXACT REQUIREMENT: No can be pressed 5 times, then it vanishes
@@ -831,9 +842,17 @@
     let lastPawX = cursorX, lastPawY = cursorY;
     let lastMoveAngle = 0;
 
+    // Track last finger position so "No" can dodge on mobile even without pointermove
+    let lastPointerX = window.innerWidth / 2;
+    let lastPointerY = window.innerHeight / 2;
+    let pointerActive = false;
+
     function setTarget(x, y) {
       mouseX = x;
       mouseY = y;
+      lastPointerX = x;
+      lastPointerY = y;
+      pointerActive = true;
     }
 
     document.addEventListener('mousemove', (e) => {
@@ -854,7 +873,7 @@
 
         if (Math.random() > 0.92) spawnParticle(mouseX, mouseY);
       }
-    });
+    }, { passive: true });
 
     document.addEventListener('touchstart', (e) => {
       if (!e.touches[0]) return;
@@ -1126,6 +1145,7 @@
         document.getElementById('topHeart').style.opacity = '1';
 
         yesBtn.style.setProperty('--current-scale', String(YES_BASE_SCALE));
+        yesBtn.classList.add('glow-3'); // immediate focus
 
         const sub = document.getElementById('subtitle');
         sub.textContent = 'Tap "No" 5 times to make it disappear.';
@@ -1190,7 +1210,6 @@
         return;
       }
 
-      // After each successful press, it fades more. On 5th press it vanishes.
       if (noPresses >= 1) noBtn.classList.add('fade-1');
       if (noPresses >= 2) noBtn.classList.add('fade-2');
       if (noPresses >= 3) noBtn.classList.add('fade-3');
@@ -1203,9 +1222,49 @@
       }
     }
 
-    // Movement logic: No dodges when you get close, but it ONLY counts as progress when you actually press it.
+    // More playful movement: frequent hops, stronger dodge, mobile-safe loop
     let isMoving = false;
     let animFrame = null;
+
+    function setNoPositionWithinZone(targetLeftPx, targetTopPx, rotDeg) {
+      const zr = zone.getBoundingClientRect();
+      const nr = noBtn.getBoundingClientRect();
+
+      let nl = targetLeftPx;
+      let nt = targetTopPx;
+
+      nl = Math.max(12, Math.min(nl, zr.width - nr.width - 12));
+      nt = Math.max(12, Math.min(nt, zr.height - nr.height - 12));
+
+      const cx = nl + nr.width / 2;
+      const cy = nt + nr.height / 2;
+
+      noBtn.style.left = cx + 'px';
+      noBtn.style.top  = cy + 'px';
+      noBtn.style.transform = `translate(-50%, -50%) rotate(${rotDeg}deg)`;
+    }
+
+    function hopNoRandomly(intensity = 1) {
+      if (noHidden || !transitionDone) return;
+      const zr = zone.getBoundingClientRect();
+      const nr = noBtn.getBoundingClientRect();
+
+      const margin = 12;
+      const w = Math.max(60, zr.width - nr.width - margin * 2);
+      const h = Math.max(60, zr.height - nr.height - margin * 2);
+
+      const biasAwayX = (lastPointerX - (zr.left + zr.width / 2));
+      const biasAwayY = (lastPointerY - (zr.top + zr.height / 2));
+
+      // Push to the opposite side of finger a bit
+      const bx = clamp((-biasAwayX / Math.max(1, zr.width)) * 0.35, -0.35, 0.35);
+      const by = clamp((-biasAwayY / Math.max(1, zr.height)) * 0.35, -0.35, 0.35);
+
+      const x = margin + (0.5 + bx) * w + rand(-40, 40) * intensity;
+      const y = margin + (0.5 + by) * h + rand(-40, 40) * intensity;
+
+      setNoPositionWithinZone(x, y, rand(-16, 16) * intensity);
+    }
 
     function dodgeNo(px, py) {
       if (noHidden || isMoving || !transitionDone) return;
@@ -1217,30 +1276,38 @@
       const ncx = nr.left + nr.width / 2;
       const ncy = nr.top + nr.height / 2;
 
-      const threshold = (window.innerWidth < 400 ? 120 : 165);
+      const baseThreshold = isMobileLike ? 230 : 175;
+      const threshold = baseThreshold + (noPresses * 8); // gets more chaotic
 
       if (Math.hypot(px - ncx, py - ncy) < threshold) {
         let dx = ncx - px;
         let dy = ncy - py;
         const mag = Math.hypot(dx, dy) || 1;
 
-        let nl = (nr.left - zr.left) + (dx / mag) * 170;
-        let nt = (nr.top - zr.top) + (dy / mag) * 170;
+        const hop = (isMobileLike ? 260 : 210) + (noPresses * 18);
+        let nl = (nr.left - zr.left) + (dx / mag) * hop + rand(-55, 55);
+        let nt = (nr.top - zr.top) + (dy / mag) * hop + rand(-55, 55);
 
-        nl = Math.max(10, Math.min(nl, zr.width - nr.width - 10));
-        nt = Math.max(10, Math.min(nt, zr.height - nr.height - 10));
+        // occasional extra hop for "more rumspringen"
+        if (Math.random() > 0.58) {
+          nl += rand(-120, 120);
+          nt += rand(-90, 90);
+        }
+
+        nl = Math.max(12, Math.min(nl, zr.width - nr.width - 12));
+        nt = Math.max(12, Math.min(nt, zr.height - nr.height - 12));
 
         const cx = nl + nr.width / 2;
         const cy = nt + nr.height / 2;
 
         noBtn.style.left = cx + 'px';
         noBtn.style.top  = cy + 'px';
-        noBtn.style.transform = `translate(-50%, -50%) rotate(${Math.random() * 18 - 9}deg)`;
+        noBtn.style.transform = `translate(-50%, -50%) rotate(${rand(-18, 18)}deg)`;
 
-        for (let i = 0; i < 3; i++) spawnNoSpark(ncx + rand(-10,10), ncy + rand(-10,10));
+        for (let i = 0; i < (isMobileLike ? 6 : 4); i++) spawnNoSpark(ncx + rand(-14,14), ncy + rand(-14,14));
       }
 
-      setTimeout(() => { isMoving = false; }, 22);
+      setTimeout(() => { isMoving = false; }, 18);
     }
 
     function onZonePointerMove(e) {
@@ -1261,12 +1328,50 @@
     zone.addEventListener('pointerdown', onZonePointerDown, { passive: false });
     zone.addEventListener('pointermove', onZonePointerMove, { passive: true });
 
+    // Mobile: keep last finger point and run a small loop so it dodges reliably
+    zone.addEventListener('touchstart', (e) => {
+      if (!transitionDone || !e.touches || !e.touches[0]) return;
+      const t = e.touches[0];
+      setTarget(t.clientX, t.clientY);
+      // instant reaction
+      dodgeNo(t.clientX, t.clientY);
+    }, { passive: true });
+
     zone.addEventListener('touchmove', (e) => {
       if (!transitionDone || !e.touches || !e.touches[0]) return;
-      e.preventDefault();
       const t = e.touches[0];
+      setTarget(t.clientX, t.clientY);
+      // do not block scrolling of the card, only react
       dodgeNo(t.clientX, t.clientY);
-    }, { passive: false });
+    }, { passive: true });
+
+    // Continuous "playful" behavior: if finger is down, it keeps dodging
+    function mobileDodgeLoop() {
+      if (transitionDone && isMobileLike && !noHidden) {
+        // If finger is down or recently used, react more
+        if (pointerActive) dodgeNo(lastPointerX, lastPointerY);
+
+        // Random hops to feel alive
+        if (Math.random() > 0.92) hopNoRandomly(1);
+
+        // Slowly decay "active"
+        if (Math.random() > 0.80) pointerActive = false;
+      }
+      requestAnimationFrame(mobileDodgeLoop);
+    }
+    mobileDodgeLoop();
+
+    // Extra: periodic micro-hop even without touch, so it "rumspringt" more
+    let hopTimer = null;
+    function startHopTimer() {
+      if (hopTimer) clearInterval(hopTimer);
+      hopTimer = setInterval(() => {
+        if (!transitionDone || noHidden) return;
+        // do not make it impossible, hop less often after many presses
+        const p = clamp(0.42 - noPresses * 0.06, 0.16, 0.42);
+        if (Math.random() < p) hopNoRandomly(0.9);
+      }, isMobileLike ? 520 : 700);
+    }
 
     // Pressing No: counts 1..5, fades each time, grows Yes each time, then vanishes at 5
     noBtn.addEventListener('pointerdown', (e) => {
@@ -1280,12 +1385,14 @@
       const r = noBtn.getBoundingClientRect();
       const cx = r.left + r.width / 2;
       const cy = r.top + r.height / 2;
-      for (let i = 0; i < 7; i++) spawnNoSpark(cx + rand(-18,18), cy + rand(-18,18));
+      for (let i = 0; i < (isMobileLike ? 10 : 7); i++) spawnNoSpark(cx + rand(-18,18), cy + rand(-18,18));
 
       if (!noHidden) {
         hint.textContent = `"No" pressed (${noPresses}/${NO_VANISH_AT}). Again.`;
-        // After a successful press, force an immediate dodge so it feels playful
-        dodgeNo(cx + rand(-40,40), cy + rand(-40,40));
+        // playful multi-hop after a successful press
+        dodgeNo(cx + rand(-60,60), cy + rand(-60,60));
+        setTimeout(() => dodgeNo(cx + rand(-80,80), cy + rand(-80,80)), 70);
+        if (Math.random() > 0.5) setTimeout(() => hopNoRandomly(1.0), 140);
       }
     }, { passive: false });
 
@@ -1320,6 +1427,19 @@
     window.addEventListener('resize', () => {
       if (!isValentineMode) spawnCheesePieces();
     });
+
+    // Ensure hop timer starts once Valentine is unlocked
+    const _origStartTransition = startTransition;
+    startTransition = function() {
+      _origStartTransition();
+      setTimeout(() => {
+        if (transitionDone) {
+          startHopTimer();
+          // place No initially somewhere "alive"
+          hopNoRandomly(1);
+        }
+      }, 1700);
+    };
   </script>
 </body>
 </html>
