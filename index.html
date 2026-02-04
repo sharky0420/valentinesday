@@ -414,12 +414,13 @@
       width: 100%;
       height: min(180px, 30vh);
       margin: 32px auto 12px;
-      touch-action: none;
       user-select: none;
       opacity: 0;
       pointer-events: none;
       transform: scale(0.9) translateY(20px);
       transition: all 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+      touch-action: none; /* critical for mobile */
     }
     .button-zone.active {
       opacity: 1;
@@ -456,7 +457,8 @@
       align-items: center;
       justify-content: center;
       z-index: 10;
-      transform: scale(var(--current-scale, 1));
+      transform: scale(var(--current-scale, 1.15));
+      touch-action: none;
     }
 
     #yesBtn.glow-1 { box-shadow: 0 12px 35px rgba(255, 59, 122, 0.35); }
@@ -468,8 +470,8 @@
       animation: yesPulse 2s ease-in-out infinite;
     }
     @keyframes yesPulse {
-      0%, 100% { transform: scale(var(--current-scale, 1)); }
-      50% { transform: scale(calc(var(--current-scale, 1) * 1.02)); }
+      0%, 100% { transform: scale(var(--current-scale, 1.15)); }
+      50% { transform: scale(calc(var(--current-scale, 1.15) * 1.02)); }
     }
 
     .pulse-ring {
@@ -506,7 +508,7 @@
       position: absolute;
       left: 65%;
       top: 50%;
-      transform: translateY(-50%);
+      transform: translate(-50%, -50%);
       padding: 18px 36px;
       font-size: clamp(16px, 3.5vw, 20px);
       font-weight: 700;
@@ -516,9 +518,18 @@
       background: linear-gradient(135deg, #f1f5f9, #e2e8f0);
       color: #334155;
       box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-      transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.35s ease, filter 0.35s ease;
       z-index: 20;
+      touch-action: none;
+
+      will-change: left, top, transform, opacity, filter;
     }
+
+    #noBtn.ghost-1 { opacity: 0.85; filter: blur(0.2px); }
+    #noBtn.ghost-2 { opacity: 0.70; filter: blur(0.6px); }
+    #noBtn.ghost-3 { opacity: 0.55; filter: blur(1px); }
+    #noBtn.ghost-4 { opacity: 0.40; filter: blur(1.5px); }
+    #noBtn.vanish { opacity: 0; filter: blur(2.5px); pointer-events: none; transform: translate(-50%, -50%) scale(0.6) rotate(-12deg); }
 
     @media (max-width: 400px) {
       .button-zone { height: 190px; }
@@ -600,6 +611,20 @@
     @keyframes float {
       0% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 0.6; }
       100% { transform: translate(var(--tx), var(--ty)) scale(0) rotate(360deg); opacity: 0; }
+    }
+
+    .no-spark {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9997;
+      font-size: 18px;
+      opacity: 0.85;
+      animation: noSpark 700ms ease-out forwards;
+      transform: translate(-50%, -50%);
+    }
+    @keyframes noSpark {
+      0% { opacity: 0.85; transform: translate(-50%, -50%) scale(1); }
+      100% { opacity: 0; transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(0.2); }
     }
   </style>
 </head>
@@ -704,8 +729,16 @@
   <script>
     let isValentineMode = false;
     let transitionDone = false;
+
     let yesGrowthLevel = 0;
-    let yesScale = 1;
+    const YES_BASE_SCALE = 1.15;          // bigger from the start
+    const YES_MAX_SCALE  = 2.6;           // bigger overall cap
+    const YES_GROW_STEP  = 0.095;         // grows faster per dodge
+    let yesScale = YES_BASE_SCALE;
+
+    let noDodges = 0;                     // how many times "No" escaped
+    const NO_VANISH_AT = 12;              // after this, "No" disappears
+    let noHidden = false;
 
     const body = document.body;
     const cursor = document.getElementById('cursor');
@@ -731,12 +764,12 @@
     const confettiCanvas = document.getElementById('confettiCanvas');
     const myConfetti = confetti.create(confettiCanvas, { resize: true });
 
-    // Emoji confetti setup for cat clicks (clear, visible emojis)
+    // Emoji confetti setup for cat clicks
     const catClickArea = document.getElementById('catClickArea');
     let catClickCount = 0;
 
     const CAT_EMOJIS = ['✨','🐭','🦁','💕','💖'];
-    const EMOJI_SCALAR = 1.6; // visibility
+    const EMOJI_SCALAR = 1.6;
     const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
 
     const CAT_SHAPES = CAT_EMOJIS.map(e =>
@@ -744,6 +777,7 @@
     );
 
     function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+    function rand(min, max) { return Math.random() * (max - min) + min; }
 
     function burstCatConfetti(clientX, clientY) {
       catClickCount++;
@@ -808,8 +842,6 @@
     // Pawprints throttling (first screen only)
     let lastPawX = cursorX, lastPawY = cursorY;
     let lastMoveAngle = 0;
-
-    function rand(min, max) { return Math.random() * (max - min) + min; }
 
     function setTarget(x, y) {
       mouseX = x;
@@ -1105,8 +1137,10 @@
         document.getElementById('blushRight').style.opacity = '0.6';
         document.getElementById('topHeart').style.opacity = '1';
 
+        yesBtn.style.setProperty('--current-scale', String(YES_BASE_SCALE));
+
         const sub = document.getElementById('subtitle');
-        sub.textContent = 'Move your mouse...';
+        sub.textContent = 'Catch "No" to power up "Yes".';
 
         setTimeout(() => document.getElementById('iceOverlay').classList.remove('active'), 900);
 
@@ -1119,25 +1153,6 @@
       }, 900);
     }
 
-    function growYes() {
-      yesGrowthLevel++;
-      yesScale = Math.min(2.0, 1 + (yesGrowthLevel * 0.06));
-      yesBtn.style.setProperty('--current-scale', yesScale.toFixed(3));
-
-      yesBtn.className = '';
-      if (yesGrowthLevel >= 2) yesBtn.classList.add('glow-1');
-      if (yesGrowthLevel >= 4) yesBtn.classList.add('glow-2');
-      if (yesGrowthLevel >= 6) yesBtn.classList.add('glow-3');
-      if (yesGrowthLevel >= 8) yesBtn.classList.add('glow-4');
-      if (yesGrowthLevel >= 10) {
-        yesBtn.classList.add('glow-5');
-        yesMicrotext.classList.add('visible');
-      }
-
-      createPulseRing();
-      if (navigator.vibrate) navigator.vibrate(40);
-    }
-
     function createPulseRing() {
       const ring = document.createElement('div');
       ring.className = 'pulse-ring';
@@ -1148,71 +1163,161 @@
       setTimeout(() => ring.remove(), 800);
     }
 
+    function spawnNoSpark(x, y) {
+      const s = document.createElement('div');
+      s.className = 'no-spark';
+      s.textContent = ['✦','•','+','♥'][Math.floor(Math.random() * 4)];
+      s.style.left = x + 'px';
+      s.style.top = y + 'px';
+      s.style.setProperty('--tx', (Math.random() * 60 - 30) + 'px');
+      s.style.setProperty('--ty', (Math.random() * -60 - 25) + 'px');
+      document.getElementById('trail-container').appendChild(s);
+      setTimeout(() => s.remove(), 800);
+    }
+
+    function applyNoGhostLevel() {
+      noBtn.classList.remove('ghost-1','ghost-2','ghost-3','ghost-4','vanish');
+
+      if (noHidden) {
+        noBtn.classList.add('vanish');
+        return;
+      }
+
+      if (noDodges >= 3) noBtn.classList.add('ghost-1');
+      if (noDodges >= 5) noBtn.classList.add('ghost-2');
+      if (noDodges >= 7) noBtn.classList.add('ghost-3');
+      if (noDodges >= 9) noBtn.classList.add('ghost-4');
+      if (noDodges >= NO_VANISH_AT) {
+        noHidden = true;
+        noBtn.classList.add('vanish');
+        hint.textContent = '"No" vanished. The only option left is obvious.';
+        setTimeout(() => { noBtn.style.display = 'none'; }, 450);
+      }
+    }
+
+    function growYes() {
+      yesGrowthLevel++;
+      yesScale = Math.min(YES_MAX_SCALE, YES_BASE_SCALE + (yesGrowthLevel * YES_GROW_STEP));
+      yesBtn.style.setProperty('--current-scale', yesScale.toFixed(3));
+
+      yesBtn.className = '';
+      if (yesGrowthLevel >= 1) yesBtn.classList.add('glow-1');
+      if (yesGrowthLevel >= 3) yesBtn.classList.add('glow-2');
+      if (yesGrowthLevel >= 5) yesBtn.classList.add('glow-3');
+      if (yesGrowthLevel >= 7) yesBtn.classList.add('glow-4');
+      if (yesGrowthLevel >= 9) {
+        yesBtn.classList.add('glow-5');
+        yesMicrotext.classList.add('visible');
+      }
+
+      createPulseRing();
+      if (navigator.vibrate) navigator.vibrate(35);
+    }
+
     let isMoving = false;
+    let animFrame = null;
 
     function moveNo(px, py) {
-      if (isMoving || !transitionDone) return;
+      if (noHidden || isMoving || !transitionDone) return;
       isMoving = true;
 
       const zr = zone.getBoundingClientRect();
       const nr = noBtn.getBoundingClientRect();
+
       const ncx = nr.left + nr.width / 2;
       const ncy = nr.top + nr.height / 2;
 
-      const threshold = (window.innerWidth < 400 ? 100 : 140);
+      const threshold = (window.innerWidth < 400 ? 115 : 155);
 
       if (Math.hypot(px - ncx, py - ncy) < threshold) {
         let dx = ncx - px;
         let dy = ncy - py;
         const mag = Math.hypot(dx, dy) || 1;
 
-        let nl = (nr.left - zr.left) + (dx / mag) * 130;
-        let nt = (nr.top - zr.top) + (dy / mag) * 130;
+        let nl = (nr.left - zr.left) + (dx / mag) * 150;
+        let nt = (nr.top - zr.top) + (dy / mag) * 150;
 
+        // keep inside zone
         nl = Math.max(10, Math.min(nl, zr.width - nr.width - 10));
         nt = Math.max(10, Math.min(nt, zr.height - nr.height - 10));
 
-        noBtn.style.left = nl + 'px';
-        noBtn.style.top = nt + 'px';
-        noBtn.style.transform = `translateY(-50%) rotate(${Math.random() * 18 - 9}deg)`;
+        // position with translate(-50%,-50%), so set coords for the center
+        const cx = nl + nr.width / 2;
+        const cy = nt + nr.height / 2;
 
+        noBtn.style.left = cx + 'px';
+        noBtn.style.top  = cy + 'px';
+
+        noBtn.style.transform = `translate(-50%, -50%) rotate(${Math.random() * 18 - 9}deg)`;
+
+        noDodges++;
+        applyNoGhostLevel();
         growYes();
+
+        // playful: spark burst where it escaped
+        for (let i = 0; i < 4; i++) spawnNoSpark(ncx + rand(-10,10), ncy + rand(-10,10));
+
+        hint.textContent = noHidden
+          ? '"No" vanished. The only option left is obvious.'
+          : `"No" escaped (${Math.min(noDodges, NO_VANISH_AT)}/${NO_VANISH_AT}). Keep trying.`;
       }
 
-      setTimeout(() => { isMoving = false; }, 30);
+      setTimeout(() => { isMoving = false; }, 24);
     }
 
-    let animFrame = null;
-
-    zone.addEventListener('mousemove', (e) => {
+    // Pointer Events: fixes mobile (iOS/Android) consistently
+    function onZonePointerMove(e) {
+      if (!transitionDone) return;
       if (animFrame) return;
       animFrame = requestAnimationFrame(() => {
         moveNo(e.clientX, e.clientY);
         animFrame = null;
       });
-    });
+    }
 
+    function onZonePointerDown(e) {
+      if (!transitionDone) return;
+      // prevent card scrolling while playing
+      e.preventDefault();
+      moveNo(e.clientX, e.clientY);
+    }
+
+    zone.addEventListener('pointerdown', onZonePointerDown, { passive: false });
+    zone.addEventListener('pointermove', onZonePointerMove, { passive: true });
+
+    // Safety: also catch touchmove and prevent scroll for older browsers
     zone.addEventListener('touchmove', (e) => {
-      if (!e.touches[0] || animFrame) return;
+      if (!transitionDone || !e.touches || !e.touches[0]) return;
+      e.preventDefault();
       const t = e.touches[0];
-      animFrame = requestAnimationFrame(() => {
-        moveNo(t.clientX, t.clientY);
-        animFrame = null;
-      });
-    }, { passive: true });
+      moveNo(t.clientX, t.clientY);
+    }, { passive: false });
 
     noBtn.addEventListener('click', (e) => {
       e.preventDefault();
+      if (noHidden) return;
+
       const zr = zone.getBoundingClientRect();
 
-      const left = 20 + Math.random() * (zr.width - noBtn.offsetWidth - 40);
-      const top = 20 + Math.random() * (zr.height - noBtn.offsetHeight - 40);
+      const w = noBtn.offsetWidth;
+      const h = noBtn.offsetHeight;
 
-      noBtn.style.left = left + 'px';
-      noBtn.style.top = top + 'px';
-      noBtn.style.transform = `translateY(-50%) rotate(${Math.random() * 18 - 9}deg)`;
+      // set by center coords to match translate(-50%,-50%)
+      const cx = 20 + w/2 + Math.random() * (zr.width - w - 40);
+      const cy = 20 + h/2 + Math.random() * (zr.height - h - 40);
 
+      noBtn.style.left = cx + 'px';
+      noBtn.style.top  = cy + 'px';
+      noBtn.style.transform = `translate(-50%, -50%) rotate(${Math.random() * 18 - 9}deg)`;
+
+      noDodges++;
+      applyNoGhostLevel();
       growYes();
+      for (let i = 0; i < 6; i++) spawnNoSpark(cx + rand(-18,18), cy + rand(-18,18));
+
+      hint.textContent = noHidden
+        ? '"No" vanished. The only option left is obvious.'
+        : `"No" escaped (${Math.min(noDodges, NO_VANISH_AT)}/${NO_VANISH_AT}). Keep trying.`;
     });
 
     yesBtn.addEventListener('click', () => {
@@ -1220,8 +1325,8 @@
       hint.style.display = 'none';
       result.style.display = 'block';
 
-      myConfetti({ particleCount: 160, spread: 110, origin: { y: 0.62 }, colors: ['#ff3b7a', '#ff7aa2', '#ffd6e7'] });
-      setTimeout(() => myConfetti({ particleCount: 120, spread: 130, origin: { y: 0.82 }, colors: ['#ff3b7a', '#ff7aa2'] }), 280);
+      myConfetti({ particleCount: 170, spread: 115, origin: { y: 0.62 }, colors: ['#ff3b7a', '#ff7aa2', '#ffd6e7'] });
+      setTimeout(() => myConfetti({ particleCount: 130, spread: 135, origin: { y: 0.82 }, colors: ['#ff3b7a', '#ff7aa2'] }), 280);
 
       if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 200]);
 
