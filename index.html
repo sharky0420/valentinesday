@@ -419,8 +419,7 @@
       pointer-events: none;
       transform: scale(0.9) translateY(20px);
       transition: all 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
-
-      touch-action: none; /* critical for mobile */
+      touch-action: none;
     }
     .button-zone.active {
       opacity: 1;
@@ -521,15 +520,14 @@
       transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.35s ease, filter 0.35s ease;
       z-index: 20;
       touch-action: none;
-
       will-change: left, top, transform, opacity, filter;
     }
 
-    #noBtn.ghost-1 { opacity: 0.85; filter: blur(0.2px); }
-    #noBtn.ghost-2 { opacity: 0.70; filter: blur(0.6px); }
-    #noBtn.ghost-3 { opacity: 0.55; filter: blur(1px); }
-    #noBtn.ghost-4 { opacity: 0.40; filter: blur(1.5px); }
-    #noBtn.vanish { opacity: 0; filter: blur(2.5px); pointer-events: none; transform: translate(-50%, -50%) scale(0.6) rotate(-12deg); }
+    #noBtn.fade-1 { opacity: 0.82; filter: blur(0.3px); }
+    #noBtn.fade-2 { opacity: 0.64; filter: blur(0.8px); }
+    #noBtn.fade-3 { opacity: 0.46; filter: blur(1.2px); }
+    #noBtn.fade-4 { opacity: 0.28; filter: blur(1.8px); }
+    #noBtn.vanish { opacity: 0; filter: blur(2.6px); pointer-events: none; transform: translate(-50%, -50%) scale(0.6) rotate(-12deg); }
 
     @media (max-width: 400px) {
       .button-zone { height: 190px; }
@@ -731,13 +729,14 @@
     let transitionDone = false;
 
     let yesGrowthLevel = 0;
-    const YES_BASE_SCALE = 1.15;          // bigger from the start
-    const YES_MAX_SCALE  = 2.6;           // bigger overall cap
-    const YES_GROW_STEP  = 0.095;         // grows faster per dodge
+    const YES_BASE_SCALE = 1.15;
+    const YES_MAX_SCALE  = 2.6;
+    const YES_GROW_STEP  = 0.11;
     let yesScale = YES_BASE_SCALE;
 
-    let noDodges = 0;                     // how many times "No" escaped
-    const NO_VANISH_AT = 12;              // after this, "No" disappears
+    // EXACT REQUIREMENT: No can be pressed 5 times, then it vanishes
+    let noPresses = 0;
+    const NO_VANISH_AT = 5;
     let noHidden = false;
 
     const body = document.body;
@@ -760,11 +759,9 @@
 
     const pawLayer = document.getElementById('paw-layer');
 
-    // One confetti instance for the whole page
     const confettiCanvas = document.getElementById('confettiCanvas');
     const myConfetti = confetti.create(confettiCanvas, { resize: true });
 
-    // Emoji confetti setup for cat clicks
     const catClickArea = document.getElementById('catClickArea');
     let catClickCount = 0;
 
@@ -805,11 +802,7 @@
 
     if (catClickArea) {
       catClickArea.style.cursor = 'pointer';
-
-      catClickArea.addEventListener('click', (e) => {
-        burstCatConfetti(e.clientX, e.clientY);
-      });
-
+      catClickArea.addEventListener('click', (e) => burstCatConfetti(e.clientX, e.clientY));
       catClickArea.addEventListener('touchstart', (e) => {
         if (!e.touches || !e.touches[0]) return;
         const t = e.touches[0];
@@ -817,11 +810,9 @@
       }, { passive: true });
     }
 
-    // Cursor target and cursor position (cursor eases towards target)
     let mouseX = window.innerWidth / 2, mouseY = window.innerHeight / 2;
     let cursorX = mouseX, cursorY = mouseY;
 
-    // Micro-saccades
     const sacc = {
       x: 0, y: 0,
       tx: 0, ty: 0,
@@ -831,15 +822,12 @@
       nextImpulse: 0
     };
 
-    // Cheese gate
     let cheeseCollected = 0;
     const CHEESE_TOTAL = 5;
     let cheeseUnlocked = false;
 
-    // Trail throttling
     let lastTrailX = cursorX, lastTrailY = cursorY, lastTrailTs = 0;
 
-    // Pawprints throttling (first screen only)
     let lastPawX = cursorX, lastPawY = cursorY;
     let lastMoveAngle = 0;
 
@@ -1140,7 +1128,7 @@
         yesBtn.style.setProperty('--current-scale', String(YES_BASE_SCALE));
 
         const sub = document.getElementById('subtitle');
-        sub.textContent = 'Catch "No" to power up "Yes".';
+        sub.textContent = 'Tap "No" 5 times to make it disappear.';
 
         setTimeout(() => document.getElementById('iceOverlay').classList.remove('active'), 900);
 
@@ -1175,26 +1163,6 @@
       setTimeout(() => s.remove(), 800);
     }
 
-    function applyNoGhostLevel() {
-      noBtn.classList.remove('ghost-1','ghost-2','ghost-3','ghost-4','vanish');
-
-      if (noHidden) {
-        noBtn.classList.add('vanish');
-        return;
-      }
-
-      if (noDodges >= 3) noBtn.classList.add('ghost-1');
-      if (noDodges >= 5) noBtn.classList.add('ghost-2');
-      if (noDodges >= 7) noBtn.classList.add('ghost-3');
-      if (noDodges >= 9) noBtn.classList.add('ghost-4');
-      if (noDodges >= NO_VANISH_AT) {
-        noHidden = true;
-        noBtn.classList.add('vanish');
-        hint.textContent = '"No" vanished. The only option left is obvious.';
-        setTimeout(() => { noBtn.style.display = 'none'; }, 450);
-      }
-    }
-
     function growYes() {
       yesGrowthLevel++;
       yesScale = Math.min(YES_MAX_SCALE, YES_BASE_SCALE + (yesGrowthLevel * YES_GROW_STEP));
@@ -1202,10 +1170,10 @@
 
       yesBtn.className = '';
       if (yesGrowthLevel >= 1) yesBtn.classList.add('glow-1');
-      if (yesGrowthLevel >= 3) yesBtn.classList.add('glow-2');
-      if (yesGrowthLevel >= 5) yesBtn.classList.add('glow-3');
-      if (yesGrowthLevel >= 7) yesBtn.classList.add('glow-4');
-      if (yesGrowthLevel >= 9) {
+      if (yesGrowthLevel >= 2) yesBtn.classList.add('glow-2');
+      if (yesGrowthLevel >= 3) yesBtn.classList.add('glow-3');
+      if (yesGrowthLevel >= 4) yesBtn.classList.add('glow-4');
+      if (yesGrowthLevel >= 5) {
         yesBtn.classList.add('glow-5');
         yesMicrotext.classList.add('visible');
       }
@@ -1214,10 +1182,32 @@
       if (navigator.vibrate) navigator.vibrate(35);
     }
 
+    function applyNoFadeLevel() {
+      noBtn.classList.remove('fade-1','fade-2','fade-3','fade-4','vanish');
+
+      if (noHidden) {
+        noBtn.classList.add('vanish');
+        return;
+      }
+
+      // After each successful press, it fades more. On 5th press it vanishes.
+      if (noPresses >= 1) noBtn.classList.add('fade-1');
+      if (noPresses >= 2) noBtn.classList.add('fade-2');
+      if (noPresses >= 3) noBtn.classList.add('fade-3');
+      if (noPresses >= 4) noBtn.classList.add('fade-4');
+      if (noPresses >= NO_VANISH_AT) {
+        noHidden = true;
+        noBtn.classList.add('vanish');
+        hint.textContent = '"No" is gone. The answer is obvious.';
+        setTimeout(() => { noBtn.style.display = 'none'; }, 450);
+      }
+    }
+
+    // Movement logic: No dodges when you get close, but it ONLY counts as progress when you actually press it.
     let isMoving = false;
     let animFrame = null;
 
-    function moveNo(px, py) {
+    function dodgeNo(px, py) {
       if (noHidden || isMoving || !transitionDone) return;
       isMoving = true;
 
@@ -1227,98 +1217,80 @@
       const ncx = nr.left + nr.width / 2;
       const ncy = nr.top + nr.height / 2;
 
-      const threshold = (window.innerWidth < 400 ? 115 : 155);
+      const threshold = (window.innerWidth < 400 ? 120 : 165);
 
       if (Math.hypot(px - ncx, py - ncy) < threshold) {
         let dx = ncx - px;
         let dy = ncy - py;
         const mag = Math.hypot(dx, dy) || 1;
 
-        let nl = (nr.left - zr.left) + (dx / mag) * 150;
-        let nt = (nr.top - zr.top) + (dy / mag) * 150;
+        let nl = (nr.left - zr.left) + (dx / mag) * 170;
+        let nt = (nr.top - zr.top) + (dy / mag) * 170;
 
-        // keep inside zone
         nl = Math.max(10, Math.min(nl, zr.width - nr.width - 10));
         nt = Math.max(10, Math.min(nt, zr.height - nr.height - 10));
 
-        // position with translate(-50%,-50%), so set coords for the center
         const cx = nl + nr.width / 2;
         const cy = nt + nr.height / 2;
 
         noBtn.style.left = cx + 'px';
         noBtn.style.top  = cy + 'px';
-
         noBtn.style.transform = `translate(-50%, -50%) rotate(${Math.random() * 18 - 9}deg)`;
 
-        noDodges++;
-        applyNoGhostLevel();
-        growYes();
-
-        // playful: spark burst where it escaped
-        for (let i = 0; i < 4; i++) spawnNoSpark(ncx + rand(-10,10), ncy + rand(-10,10));
-
-        hint.textContent = noHidden
-          ? '"No" vanished. The only option left is obvious.'
-          : `"No" escaped (${Math.min(noDodges, NO_VANISH_AT)}/${NO_VANISH_AT}). Keep trying.`;
+        for (let i = 0; i < 3; i++) spawnNoSpark(ncx + rand(-10,10), ncy + rand(-10,10));
       }
 
-      setTimeout(() => { isMoving = false; }, 24);
+      setTimeout(() => { isMoving = false; }, 22);
     }
 
-    // Pointer Events: fixes mobile (iOS/Android) consistently
     function onZonePointerMove(e) {
       if (!transitionDone) return;
       if (animFrame) return;
       animFrame = requestAnimationFrame(() => {
-        moveNo(e.clientX, e.clientY);
+        dodgeNo(e.clientX, e.clientY);
         animFrame = null;
       });
     }
 
     function onZonePointerDown(e) {
       if (!transitionDone) return;
-      // prevent card scrolling while playing
       e.preventDefault();
-      moveNo(e.clientX, e.clientY);
+      dodgeNo(e.clientX, e.clientY);
     }
 
     zone.addEventListener('pointerdown', onZonePointerDown, { passive: false });
     zone.addEventListener('pointermove', onZonePointerMove, { passive: true });
 
-    // Safety: also catch touchmove and prevent scroll for older browsers
     zone.addEventListener('touchmove', (e) => {
       if (!transitionDone || !e.touches || !e.touches[0]) return;
       e.preventDefault();
       const t = e.touches[0];
-      moveNo(t.clientX, t.clientY);
+      dodgeNo(t.clientX, t.clientY);
     }, { passive: false });
 
-    noBtn.addEventListener('click', (e) => {
+    // Pressing No: counts 1..5, fades each time, grows Yes each time, then vanishes at 5
+    noBtn.addEventListener('pointerdown', (e) => {
+      if (noHidden || !transitionDone) return;
       e.preventDefault();
-      if (noHidden) return;
 
-      const zr = zone.getBoundingClientRect();
-
-      const w = noBtn.offsetWidth;
-      const h = noBtn.offsetHeight;
-
-      // set by center coords to match translate(-50%,-50%)
-      const cx = 20 + w/2 + Math.random() * (zr.width - w - 40);
-      const cy = 20 + h/2 + Math.random() * (zr.height - h - 40);
-
-      noBtn.style.left = cx + 'px';
-      noBtn.style.top  = cy + 'px';
-      noBtn.style.transform = `translate(-50%, -50%) rotate(${Math.random() * 18 - 9}deg)`;
-
-      noDodges++;
-      applyNoGhostLevel();
+      noPresses++;
       growYes();
-      for (let i = 0; i < 6; i++) spawnNoSpark(cx + rand(-18,18), cy + rand(-18,18));
+      applyNoFadeLevel();
 
-      hint.textContent = noHidden
-        ? '"No" vanished. The only option left is obvious.'
-        : `"No" escaped (${Math.min(noDodges, NO_VANISH_AT)}/${NO_VANISH_AT}). Keep trying.`;
-    });
+      const r = noBtn.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      for (let i = 0; i < 7; i++) spawnNoSpark(cx + rand(-18,18), cy + rand(-18,18));
+
+      if (!noHidden) {
+        hint.textContent = `"No" pressed (${noPresses}/${NO_VANISH_AT}). Again.`;
+        // After a successful press, force an immediate dodge so it feels playful
+        dodgeNo(cx + rand(-40,40), cy + rand(-40,40));
+      }
+    }, { passive: false });
+
+    // Prevent click fallback double-firing
+    noBtn.addEventListener('click', (e) => e.preventDefault());
 
     yesBtn.addEventListener('click', () => {
       zone.style.display = 'none';
